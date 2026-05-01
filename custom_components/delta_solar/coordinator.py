@@ -58,6 +58,10 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             try:
                 await api.authenticate_with_plant(plant_id)
+                # The web app's JS calls process_init_plant.php immediately after
+                # login to load plant data into the PHP session. Without this,
+                # AjaxPlantUpdatePlant.php returns {'errmsg': 'no plant_data'}.
+                await api.get_plants()
             except DeltaSolarConnectionError as err:
                 raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
 
