@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta, date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -61,11 +61,23 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # The web app's JS calls process_init_plant.php immediately after
                 # login to load plant data into the PHP session. Without this,
                 # AjaxPlantUpdatePlant.php returns {'errmsg': 'no plant_data'}.
-                await api.get_plants()
+                plants = await api.get_plants()
             except DeltaSolarConnectionError as err:
                 raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
 
-            today = date.today()
+            plant_data = next(
+                (plant for plant in plants if plant.get("plant_id") == plant_id),
+                {},
+            )
+
+            try:
+                timezone_offset = float(self._plant_config[CONF_TIMEZONE_OFFSET])
+                today = datetime.now(
+                    timezone(timedelta(hours=timezone_offset))
+                ).date()
+            except (TypeError, ValueError):
+                today = date.today()
+
             kwargs = {
                 "plant_id": plant_id,
                 "inverter_sn": self._plant_config[CONF_INVERTER_SN],
@@ -87,12 +99,11 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except DeltaSolarConnectionError as err:
                 raise UpdateFailed(f"Energy fetch error: {err}") from err
 
-            # parse_all_totals also derives current power from the day ts/top arrays
             totals = DeltaSolarAPI.parse_all_totals(day_data, month_data, year_data)
 
             return {
                 "today_energy": totals.get("today"),
                 "month_energy": totals.get("month"),
                 "year_energy": totals.get("year"),
-                "current_power": totals.get("current_power"),
+                "current_power": plant_data.get("current_power"),
             }
