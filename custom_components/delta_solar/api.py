@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import aiohttp
@@ -267,14 +267,45 @@ class DeltaSolarAPI:
             return None
 
     @staticmethod
+    def parse_current_power(data: dict[str, Any]) -> float | None:
+        """Extract current power output in Watts from a day-unit response.
+
+        Delta's day `ts` values are local chart slots, not normal UTC instants.
+        Compare them to the local wall-clock time encoded as epoch milliseconds
+        to match entries such as 20:10 local time -> 1777666200000.
+        """
+        if not data:
+            return None
+
+        ts_list: list[int] | None = data.get("ts")
+        top_list: list[float | None] | None = data.get("top")
+        if not ts_list or not top_list or len(ts_list) != len(top_list):
+            return None
+
+        local_now_ms = (
+            datetime.now() - datetime(1970, 1, 1)
+        ).total_seconds() * 1000
+        closest_idx = min(
+            range(len(ts_list)),
+            key=lambda i: abs(ts_list[i] - local_now_ms),
+        )
+
+        try:
+            val = top_list[closest_idx]
+            return float(val) if val is not None else 0.0
+        except (TypeError, ValueError, IndexError):
+            return None
+
+    @staticmethod
     def parse_all_totals(
         day_data: dict[str, Any],
         month_data: dict[str, Any],
         year_data: dict[str, Any],
     ) -> dict[str, float | None]:
-        """Return a dict with today/month/year energies (kWh)."""
+        """Return a dict with energy totals and current power."""
         return {
             "today": DeltaSolarAPI.parse_day_energy(day_data),
             "month": DeltaSolarAPI.parse_period_energy(month_data),
             "year": DeltaSolarAPI.parse_period_energy(year_data),
+            "current_power": DeltaSolarAPI.parse_current_power(day_data),
         }

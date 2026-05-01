@@ -61,14 +61,9 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # The web app's JS calls process_init_plant.php immediately after
                 # login to load plant data into the PHP session. Without this,
                 # AjaxPlantUpdatePlant.php returns {'errmsg': 'no plant_data'}.
-                plants = await api.get_plants()
+                await api.get_plants()
             except DeltaSolarConnectionError as err:
                 raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
-
-            plant_data = next(
-                (plant for plant in plants if plant.get("plant_id") == plant_id),
-                {},
-            )
 
             try:
                 timezone_offset = float(self._plant_config[CONF_TIMEZONE_OFFSET])
@@ -105,5 +100,5 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "today_energy": totals.get("today"),
                 "month_energy": totals.get("month"),
                 "year_energy": totals.get("year"),
-                "current_power": plant_data.get("current_power"),
+                "current_power": totals.get("current_power"),
             }
