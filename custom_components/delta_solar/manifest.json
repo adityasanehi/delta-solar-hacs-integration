@@ -1,10 +1,10 @@
 {
   "domain": "delta_solar",
   "name": "Delta Solar",
-  "documentation": "https://github.com/yourusername/delta-solar-hacs-integration",
-  "issue_tracker": "https://github.com/yourusername/delta-solar-hacs-integration/issues",
+  "documentation": "https://github.com/adityasanehi/delta-solar-hacs-integration",
+  "issue_tracker": "https://github.com/adityasanehi/delta-solar-hacs-integration/issues",
   "dependencies": [],
-  "codeowners": ["@yourusername"],
+  "codeowners": ["@adityasanehi"],
   "version": "1.0.0",
   "iot_class": "cloud_polling",
   "config_flow": true,
