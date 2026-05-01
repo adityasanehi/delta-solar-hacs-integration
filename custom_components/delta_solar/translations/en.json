@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Delta Solar Login",
+        "description": "Enter your Delta Solar portal credentials. Your plants will be discovered automatically.",
+        "data": {
+          "email": "Email address",
+          "password": "Password"
+        }
+      },
+      "plant": {
+        "title": "Select Plant",
+        "description": "Multiple solar plants were found on your account. Select the one to add.",
+        "data": {
+          "plant_id": "Plant"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the Delta Solar portal. Check your internet connection.",
+      "invalid_auth": "Invalid email or password, or no plants found on this account.",
+      "unknown": "An unexpected error occurred. Check the Home Assistant logs."
+    },
+    "abort": {
+      "already_configured": "This Delta Solar plant is already configured."
+    }
+  }
+}
