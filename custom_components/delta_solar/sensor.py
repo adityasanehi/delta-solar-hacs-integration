@@ -32,7 +32,7 @@ SENSOR_DESCRIPTIONS: tuple[DeltaSolarSensorDescription, ...] = (
         name="Today's Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:solar-power",
         suggested_display_precision=2,
     ),
