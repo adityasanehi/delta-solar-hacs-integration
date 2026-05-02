@@ -1,0 +1,18 @@
+{
+  "entity": {
+    "sensor": {
+      "today_energy": {
+        "default": "mdi:solar-power"
+      },
+      "month_energy": {
+        "default": "mdi:solar-power-variant"
+      },
+      "year_energy": {
+        "default": "mdi:sun-wireless"
+      },
+      "current_power": {
+        "default": "mdi:lightning-bolt"
+      }
+    }
+  }
+}
