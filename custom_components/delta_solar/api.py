@@ -1,6 +1,7 @@
 """Delta Solar API client."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime
 from typing import Any
@@ -20,6 +21,10 @@ HEADERS_AJAX = {
     "Cache-Control": "no-cache",
 }
 
+MAX_RETRIES = 3
+RETRY_BACKOFF_SECONDS = (2, 4)
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=10)
+
 
 class DeltaSolarAuthError(Exception):
     pass
@@ -29,69 +34,120 @@ class DeltaSolarConnectionError(Exception):
     pass
 
 
+class DeltaSolarSessionExpired(Exception):
+    """API responded with a session-invalid error (e.g. 'no plant_data')."""
+
+
 class DeltaSolarAPI:
     def __init__(self, session: aiohttp.ClientSession, email: str, password: str) -> None:
         self._session = session
         self._email = email
         self._password = password
 
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        allow_redirects: bool = True,
+    ) -> tuple[int, Any]:
+        """HTTP request with retry/backoff. Returns (status, parsed_body_or_text).
+
+        Retries on transient network errors and 5xx responses with exponential
+        backoff. Raises DeltaSolarConnectionError if all attempts fail.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with self._session.request(
+                    method,
+                    url,
+                    params=params,
+                    data=data,
+                    headers=headers,
+                    allow_redirects=allow_redirects,
+                    timeout=REQUEST_TIMEOUT,
+                ) as resp:
+                    status = resp.status
+                    if status >= 500 and attempt < MAX_RETRIES - 1:
+                        _LOGGER.debug(
+                            "Delta API %s returned %s; retry %d/%d in %ds",
+                            method, status, attempt + 1, MAX_RETRIES,
+                            RETRY_BACKOFF_SECONDS[attempt],
+                        )
+                        await asyncio.sleep(RETRY_BACKOFF_SECONDS[attempt])
+                        continue
+                    try:
+                        body: Any = await resp.json(content_type=None)
+                    except (aiohttp.ContentTypeError, ValueError):
+                        body = await resp.text()
+                    return status, body
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                last_exc = err
+                if attempt < MAX_RETRIES - 1:
+                    _LOGGER.debug(
+                        "Delta API %s failed (%s); retry %d/%d in %ds",
+                        method, type(err).__name__, attempt + 1, MAX_RETRIES,
+                        RETRY_BACKOFF_SECONDS[attempt],
+                    )
+                    await asyncio.sleep(RETRY_BACKOFF_SECONDS[attempt])
+                    continue
+        raise DeltaSolarConnectionError(
+            f"{method} request failed after {MAX_RETRIES} attempts: {last_exc}"
+        ) from last_exc
+
     async def authenticate(self) -> bool:
         """Authenticate and establish a session cookie.
 
         Tries m_gtop first (session-only login), then app_page fallback.
         """
-        # Strategy 1: m_gtop — the mobile top page that initialises the session
         try:
-            async with self._session.get(
+            status, _ = await self._request(
+                "GET",
                 LOGIN_URL,
                 params={"email": self._email, "password": self._password},
-                allow_redirects=True,
-            ) as resp:
-                if resp.status == 200:
-                    text = await resp.text()
-                    # m_gtop returns the plant list page; any cookie means success
-                    if "sec_session_id" in str(self._session.cookie_jar):
-                        _LOGGER.debug("Authenticated via m_gtop")
-                        return True
-        except aiohttp.ClientError as err:
+            )
+            if status == 200 and "sec_session_id" in str(self._session.cookie_jar):
+                _LOGGER.debug("Authenticated via m_gtop")
+                return True
+        except DeltaSolarConnectionError as err:
             _LOGGER.debug("m_gtop auth failed: %s", err)
 
-        # Strategy 2: app_page without pid — still sets sec_session_id
         try:
-            async with self._session.get(
+            status, _ = await self._request(
+                "GET",
                 APP_PAGE_URL,
                 params={
                     "email": self._email,
                     "password": self._password,
                     "lang": "en-us",
                 },
-                allow_redirects=True,
-            ) as resp:
-                if resp.status == 200:
-                    _LOGGER.debug("Authenticated via app_page")
-                    return True
-        except aiohttp.ClientError as err:
+            )
+            if status == 200:
+                _LOGGER.debug("Authenticated via app_page")
+                return True
+        except DeltaSolarConnectionError as err:
             _LOGGER.debug("app_page auth failed: %s", err)
 
         return False
 
     async def authenticate_with_plant(self, plant_id: str) -> bool:
         """Authenticate using the full plant-specific URL (used by coordinator)."""
-        try:
-            async with self._session.get(
-                APP_PAGE_URL,
-                params={
-                    "email": self._email,
-                    "password": self._password,
-                    "p": "energy",
-                    "pid": plant_id,
-                    "lang": "en-us",
-                },
-                allow_redirects=True,
-            ) as resp:
-                return resp.status == 200
-        except aiohttp.ClientError as err:
-            raise DeltaSolarConnectionError(f"Connection failed: {err}") from err
+        status, _ = await self._request(
+            "GET",
+            APP_PAGE_URL,
+            params={
+                "email": self._email,
+                "password": self._password,
+                "p": "energy",
+                "pid": plant_id,
+                "lang": "en-us",
+            },
+        )
+        return status == 200
 
     async def get_plants(self) -> list[dict[str, Any]]:
         """Return a list of plant dicts from process_init_plant.php."""
@@ -99,15 +155,15 @@ class DeltaSolarAPI:
             **HEADERS_AJAX,
             "Referer": LOGIN_URL,
         }
-        try:
-            async with self._session.get(
-                INIT_PLANT_URL, headers=headers
-            ) as resp:
-                if resp.status != 200:
-                    raise DeltaSolarAuthError(f"process_init_plant returned {resp.status}")
-                data = await resp.json(content_type=None)
-        except aiohttp.ClientError as err:
-            raise DeltaSolarConnectionError(f"Cannot reach Delta Solar: {err}") from err
+        status, data = await self._request(
+            "GET", INIT_PLANT_URL, headers=headers,
+        )
+        if status != 200:
+            raise DeltaSolarAuthError(f"process_init_plant returned {status}")
+        if not isinstance(data, dict):
+            raise DeltaSolarAuthError(
+                f"process_init_plant returned non-JSON ({type(data).__name__})"
+            )
 
         _LOGGER.debug("process_init_plant response: %s", data)
 
@@ -215,18 +271,20 @@ class DeltaSolarAPI:
         }
         headers = {**HEADERS_AJAX, "Referer": referer}
 
-        try:
-            async with self._session.post(
-                AJAX_URL, data=payload, headers=headers
-            ) as resp:
-                if resp.status != 200:
-                    _LOGGER.warning("Energy API returned %s for unit=%s", resp.status, unit)
-                    return {}
-                raw = await resp.json(content_type=None)
-                _LOGGER.debug("Energy response unit=%s: %s", unit, raw)
-                return raw if isinstance(raw, dict) else {}
-        except aiohttp.ClientError as err:
-            raise DeltaSolarConnectionError(f"Energy fetch failed: {err}") from err
+        status, body = await self._request(
+            "POST", AJAX_URL, data=payload, headers=headers,
+        )
+        if status != 200:
+            _LOGGER.warning("Energy API returned %s for unit=%s", status, unit)
+            return {}
+        if not isinstance(body, dict):
+            return {}
+        # `{'errmsg': 'no plant_data'}` means the PHP session was dropped on
+        # the server side and the caller needs to re-authenticate.
+        if body.get("errmsg") and "day_energy" not in body and "energy" not in body:
+            raise DeltaSolarSessionExpired(str(body.get("errmsg")))
+        _LOGGER.debug("Energy response unit=%s: %s", unit, body)
+        return body
 
     @staticmethod
     def parse_day_energy(data: dict[str, Any]) -> float | None:
