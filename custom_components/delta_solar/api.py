@@ -343,6 +343,15 @@ class DeltaSolarAPI:
         local_now_ms = (
             datetime.now() - datetime(1970, 1, 1)
         ).total_seconds() * 1000
+
+        # The API's last slot tracks roughly the current time during the day.
+        # When the inverter shuts down at night it stops appending slots, so
+        # local_now_ms drifts past ts[-1].  More than one slot-interval of drift
+        # means no active production slot exists — return 0 W.
+        slot_ms = (ts_list[1] - ts_list[0]) if len(ts_list) > 1 else 300_000
+        if local_now_ms > ts_list[-1] + slot_ms:
+            return 0.0
+
         closest_idx = min(
             range(len(ts_list)),
             key=lambda i: abs(ts_list[i] - local_now_ms),

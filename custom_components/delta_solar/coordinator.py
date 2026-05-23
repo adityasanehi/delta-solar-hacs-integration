@@ -122,9 +122,9 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._ensure_authenticated(api)
                 totals = await self._fetch_totals(api, kwargs)
             except (DeltaSolarConnectionError, DeltaSolarSessionExpired) as err2:
-                return self._fallback(err2)
+                raise UpdateFailed(f"Cannot connect to Delta Solar: {err2}") from err2
         except DeltaSolarConnectionError as err:
-            return self._fallback(err)
+            raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
 
         return {
             "today_energy": totals.get("today"),
@@ -132,12 +132,3 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "year_energy": totals.get("year"),
             "current_power": totals.get("current_power"),
         }
-
-    def _fallback(self, err: Exception) -> dict[str, Any]:
-        """Keep the sensor available on transient failures by reusing last data."""
-        if self.data is not None:
-            _LOGGER.warning(
-                "Delta Solar fetch failed; reusing last known values: %s", err
-            )
-            return self.data
-        raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
