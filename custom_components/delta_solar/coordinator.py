@@ -54,6 +54,7 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._session: aiohttp.ClientSession | None = None
         self._api: DeltaSolarAPI | None = None
         self._auth_valid = False
+        self._consecutive_failures = 0
 
     def _ensure_api(self) -> DeltaSolarAPI:
         """Lazily create a persistent session and API client."""
@@ -122,13 +123,25 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._ensure_authenticated(api)
                 totals = await self._fetch_totals(api, kwargs)
             except (DeltaSolarConnectionError, DeltaSolarSessionExpired) as err2:
-                raise UpdateFailed(f"Cannot connect to Delta Solar: {err2}") from err2
+                return self._handle_failure(err2)
         except DeltaSolarConnectionError as err:
-            raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
+            return self._handle_failure(err)
 
+        self._consecutive_failures = 0
         return {
             "today_energy": totals.get("today"),
             "month_energy": totals.get("month"),
             "year_energy": totals.get("year"),
             "current_power": totals.get("current_power"),
         }
+
+    def _handle_failure(self, err: Exception) -> dict[str, Any]:
+        self._consecutive_failures += 1
+        if self._consecutive_failures <= 1 and self.data is not None:
+            _LOGGER.warning(
+                "Delta Solar fetch failed (attempt %d); reusing last known values: %s",
+                self._consecutive_failures,
+                err,
+            )
+            return self.data
+        raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
