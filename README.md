@@ -6,13 +6,21 @@ Monitor your **Delta Solar** inverter and plant energy data directly in Home Ass
 
 - **Auto-discovery**: enter only your email and password — plant ID, serial number, timezone, and all other parameters are fetched automatically
 - **Multiple plant support**: if you have more than one installation, you pick from a dropdown during setup
-- **4 sensors per plant**:
+- **Sensors per plant**:
   | Sensor | Unit | Description |
   |--------|------|-------------|
   | Today's Energy | kWh | Energy generated today |
   | Monthly Energy | kWh | Energy generated this calendar month |
   | Yearly Energy | kWh | Energy generated this calendar year |
+  | Lifetime Energy | kWh | Total energy generated since commissioning |
   | Current Power | W | Real-time output power |
+  | String N Voltage | V | DC input voltage per MPPT string |
+  | String N Current | A | DC input current per MPPT string |
+  | String N Power | W | DC input power per MPPT string |
+  | Phase N Voltage | V | AC output voltage per phase |
+  | Phase N Current | A | AC output current per phase |
+- The number of string/phase sensors is detected automatically from your inverter (e.g. RPI-M6A reports 2 strings and 3 phases)
+- Firmware version is shown on the device page (`sw_version`)
 - Data refreshes every **5 minutes**
 - Works with the HA **Energy Dashboard** (Today's Energy sensor)
 
@@ -65,4 +73,3 @@ logger:
 ## Privacy
 
 Credentials are stored locally in Home Assistant's encrypted config store. No data is sent anywhere except the official Delta Solar portal.
-# delta-solar-hacs-integration

@@ -55,6 +55,8 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._api: DeltaSolarAPI | None = None
         self._auth_valid = False
         self._consecutive_failures = 0
+        self.dc_string_count = 0
+        self.ac_phase_count = 0
 
     def _ensure_api(self) -> DeltaSolarAPI:
         """Lazily create a persistent session and API client."""
@@ -100,6 +102,18 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "is_inv": self._plant_config[CONF_IS_INV],
         }
 
+    def _build_inverter_kwargs(self, today: date) -> dict[str, Any]:
+        return {
+            "plant_id": self._plant_config[CONF_PLANT_ID],
+            "inverter_sn": self._plant_config[CONF_INVERTER_SN],
+            "inverter_num": self._plant_config[CONF_INVERTER_NUM],
+            "when": today,
+            "start_date": self._plant_config[CONF_START_DATE],
+            "plt_type": self._plant_config[CONF_PLT_TYPE],
+            "is_dst": self._plant_config[CONF_IS_DST],
+            "is_inv": self._plant_config[CONF_IS_INV],
+        }
+
     async def _fetch_totals(
         self, api: DeltaSolarAPI, kwargs: dict[str, Any]
     ) -> dict[str, float | None]:
@@ -108,9 +122,28 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         year_data = await api.get_energy(unit="year", **kwargs)
         return DeltaSolarAPI.parse_all_totals(day_data, month_data, year_data)
 
+    async def _fetch_live(
+        self, api: DeltaSolarAPI, kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
+        try:
+            more_data = await api.get_inverter_update(item="more", **kwargs)
+            dcvi_data = await api.get_inverter_update(item="DCVI", **kwargs)
+            acvi_data = await api.get_inverter_update(item="ACVI", **kwargs)
+        except (DeltaSolarConnectionError, DeltaSolarSessionExpired) as err:
+            _LOGGER.warning("Delta live data fetch failed: %s", err)
+            return {}
+        return DeltaSolarAPI.parse_live_data(
+            more_data,
+            dcvi_data,
+            acvi_data,
+            kwargs["inverter_sn"],
+            kwargs["inverter_num"],
+        )
+
     async def _async_update_data(self) -> dict[str, Any]:
         api = self._ensure_api()
         kwargs = self._build_kwargs(self._today())
+        inverter_kwargs = self._build_inverter_kwargs(self._today())
 
         try:
             await self._ensure_authenticated(api)
@@ -127,12 +160,17 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except DeltaSolarConnectionError as err:
             return self._handle_failure(err)
 
+        live = await self._fetch_live(api, inverter_kwargs)
+        self.dc_string_count = int(live.get("dc_string_count", 0) or 0)
+        self.ac_phase_count = int(live.get("ac_phase_count", 0) or 0)
+
         self._consecutive_failures = 0
         return {
             "today_energy": totals.get("today"),
             "month_energy": totals.get("month"),
             "year_energy": totals.get("year"),
             "current_power": totals.get("current_power"),
+            **live,
         }
 
     def _handle_failure(self, err: Exception) -> dict[str, Any]:

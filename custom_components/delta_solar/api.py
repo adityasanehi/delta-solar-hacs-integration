@@ -8,7 +8,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import LOGIN_URL, APP_PAGE_URL, INIT_PLANT_URL, AJAX_URL
+from .const import LOGIN_URL, APP_PAGE_URL, INIT_PLANT_URL, AJAX_URL, INVERTER_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -353,6 +353,176 @@ class DeltaSolarAPI:
             return float(val) if val is not None else 0.0
         except (TypeError, ValueError, IndexError):
             return None
+
+    async def get_inverter_update(
+        self,
+        item: str,
+        plant_id: str,
+        inverter_sn: str,
+        inverter_num: int,
+        when: date,
+        start_date: str,
+        plt_type: int,
+        is_dst: int,
+        is_inv: int,
+    ) -> dict[str, Any]:
+        """Fetch per-inverter data from AjaxInverterUpdate.php.
+
+        `item` is one of ``more`` (lifecycle/status/firmware), ``DCVI``
+        (per-string DC voltage+current) or ``ACVI`` (per-phase AC voltage+current).
+        """
+        referer = (
+            f"{APP_PAGE_URL}?email={self._email}&password={self._password}"
+            f"&p=energy&pid={plant_id}&lang=en-us"
+        )
+        payload = {
+            "item": item,
+            "unit": "day",
+            "sn": inverter_sn,
+            "inv": inverter_num,
+            "year": when.year,
+            "month": when.month,
+            "day": when.day,
+            "plant_id": plant_id,
+            "is_inv": is_inv,
+            "start_date": start_date,
+            "plt_type": plt_type,
+            "is_dst_plt": is_dst,
+        }
+        headers = {**HEADERS_AJAX, "Referer": referer}
+
+        status, body = await self._request(
+            "POST", INVERTER_URL, data=payload, headers=headers,
+        )
+        if status != 200:
+            _LOGGER.warning("Inverter API item=%s returned %s", item, status)
+            return {}
+        if not isinstance(body, dict):
+            return {}
+        return body
+
+    @staticmethod
+    def _extract_inverter(
+        data: dict[str, Any], inverter_sn: str, inverter_num: int
+    ) -> dict[str, Any] | None:
+        """Unwrap the ``result[sn][inv]`` structure returned by item=more."""
+        if not isinstance(data, dict):
+            return None
+        result = data.get("result")
+        if not isinstance(result, dict):
+            return None
+        sn_data = result.get(inverter_sn)
+        if not isinstance(sn_data, dict):
+            return None
+        inv_data = sn_data.get(str(inverter_num))
+        return inv_data if isinstance(inv_data, dict) else None
+
+    @staticmethod
+    def _extract_vi(
+        data: dict[str, Any], inverter_sn: str, inverter_num: int
+    ) -> dict[str, Any]:
+        """Unwrap the ``result.inv[sn][inv]`` structure returned by DCVI/ACVI."""
+        if not isinstance(data, dict):
+            return {}
+        result = data.get("result")
+        if not isinstance(result, dict):
+            return {}
+        inv = result.get("inv")
+        if not isinstance(inv, dict):
+            return {}
+        sn_data = inv.get(inverter_sn)
+        if not isinstance(sn_data, dict):
+            return {}
+        inv_data = sn_data.get(str(inverter_num))
+        return inv_data if isinstance(inv_data, dict) else {}
+
+    @staticmethod
+    def _latest(series: Any) -> float | None:
+        """Return the most recent non-null ``y`` from a ``[{x, y}, ...]`` series."""
+        if not isinstance(series, list):
+            return None
+        for point in reversed(series):
+            if not isinstance(point, dict):
+                continue
+            y = point.get("y")
+            if y is None:
+                continue
+            try:
+                return float(y)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    @staticmethod
+    def parse_firmware(info: dict[str, Any] | None) -> str | None:
+        """Decode the ``fwv`` firmware-word array into a human-readable string."""
+        if not info:
+            return None
+        fwv = info.get("fwv")
+        if not isinstance(fwv, list):
+            return None
+        versions: list[str] = []
+        for value in fwv:
+            if not isinstance(value, int) or value <= 0:
+                continue
+            versions.append(f"{(value >> 8) & 0xFF}.{value & 0xFF}")
+        return " / ".join(versions) if versions else None
+
+    @staticmethod
+    def parse_live_data(
+        more_data: dict[str, Any],
+        dcvi_data: dict[str, Any],
+        acvi_data: dict[str, Any],
+        inverter_sn: str,
+        inverter_num: int,
+    ) -> dict[str, Any]:
+        """Parse item=more/DCVI/ACVI into a flat sensor dict.
+
+        Returns per-string DC voltage/current/power and per-phase AC
+        voltage/current, lifetime energy, firmware and inverter status. The
+        string/phase counts are driven by whatever keys the API actually
+        returns, so models with a different number of MPPTs or phases work too.
+        """
+        info = DeltaSolarAPI._extract_inverter(more_data, inverter_sn, inverter_num)
+        dc = DeltaSolarAPI._extract_vi(dcvi_data, inverter_sn, inverter_num)
+        ac = DeltaSolarAPI._extract_vi(acvi_data, inverter_sn, inverter_num)
+
+        out: dict[str, Any] = {
+            "firmware_version": DeltaSolarAPI.parse_firmware(info),
+            "inverter_status": info.get("ivs") if info else None,
+        }
+
+        male = info.get("male") if info else None
+        try:
+            out["lifetime_energy"] = round(float(male) / 1000, 3) if male is not None else None
+        except (TypeError, ValueError):
+            out["lifetime_energy"] = None
+
+        dc_indices = sorted(
+            k[2:] for k in dc if k.startswith("iv") and k[2:].isdigit()
+        )
+        for idx in dc_indices:
+            voltage = DeltaSolarAPI._latest(dc.get(f"iv{idx}"))
+            current = DeltaSolarAPI._latest(dc.get(f"ic{idx}"))
+            power = (
+                round(voltage * current, 1)
+                if voltage is not None and current is not None
+                else None
+            )
+            out[f"dc{idx}_voltage"] = voltage
+            out[f"dc{idx}_current"] = current
+            out[f"dc{idx}_power"] = power
+        out["dc_string_count"] = len(dc_indices)
+
+        ac_indices = sorted(
+            k[2:] for k in ac if k.startswith("ov") and k[2:].isdigit()
+        )
+        for idx in ac_indices:
+            out[f"ac{idx}_voltage"] = DeltaSolarAPI._latest(ac.get(f"ov{idx}"))
+            out[f"ac{idx}_current"] = DeltaSolarAPI._latest(ac.get(f"oc{idx}"))
+        out["ac_phase_count"] = len(ac_indices)
+
+        return out
 
     @staticmethod
     def parse_all_totals(

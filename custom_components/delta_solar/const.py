@@ -18,5 +18,6 @@ LOGIN_URL = f"{BASE_URL}/m_gtop"
 APP_PAGE_URL = f"{BASE_URL}/app_page.php"
 INIT_PLANT_URL = f"{BASE_URL}/web/process_init_plant.php"
 AJAX_URL = f"{BASE_URL}/web/AjaxPlantUpdatePlant.php"
+INVERTER_URL = f"{BASE_URL}/web/AjaxInverterUpdate.php"
 
 DEFAULT_SCAN_INTERVAL = 300  # 5 minutes

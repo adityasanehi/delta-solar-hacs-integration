@@ -11,7 +11,12 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.const import (
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -66,7 +71,89 @@ SENSOR_DESCRIPTIONS: tuple[DeltaSolarSensorDescription, ...] = (
         icon="mdi:lightning-bolt",
         suggested_display_precision=0,
     ),
+    DeltaSolarSensorDescription(
+        key="lifetime_energy",
+        data_key="lifetime_energy",
+        name="Lifetime Energy",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:counter",
+        suggested_display_precision=2,
+    ),
 )
+
+
+def _dc_descriptions(count: int) -> list[DeltaSolarSensorDescription]:
+    descriptions: list[DeltaSolarSensorDescription] = []
+    for idx in range(1, count + 1):
+        descriptions.append(
+            DeltaSolarSensorDescription(
+                key=f"dc{idx}_voltage",
+                data_key=f"dc{idx}_voltage",
+                name=f"String {idx} Voltage",
+                native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+                device_class=SensorDeviceClass.VOLTAGE,
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:current-dc",
+                suggested_display_precision=1,
+            )
+        )
+        descriptions.append(
+            DeltaSolarSensorDescription(
+                key=f"dc{idx}_current",
+                data_key=f"dc{idx}_current",
+                name=f"String {idx} Current",
+                native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+                device_class=SensorDeviceClass.CURRENT,
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:current-dc",
+                suggested_display_precision=2,
+            )
+        )
+        descriptions.append(
+            DeltaSolarSensorDescription(
+                key=f"dc{idx}_power",
+                data_key=f"dc{idx}_power",
+                name=f"String {idx} Power",
+                native_unit_of_measurement=UnitOfPower.WATT,
+                device_class=SensorDeviceClass.POWER,
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:solar-panel",
+                suggested_display_precision=0,
+            )
+        )
+    return descriptions
+
+
+def _ac_descriptions(count: int) -> list[DeltaSolarSensorDescription]:
+    descriptions: list[DeltaSolarSensorDescription] = []
+    for idx in range(1, count + 1):
+        descriptions.append(
+            DeltaSolarSensorDescription(
+                key=f"ac{idx}_voltage",
+                data_key=f"ac{idx}_voltage",
+                name=f"Phase {idx} Voltage",
+                native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+                device_class=SensorDeviceClass.VOLTAGE,
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:sine-wave",
+                suggested_display_precision=1,
+            )
+        )
+        descriptions.append(
+            DeltaSolarSensorDescription(
+                key=f"ac{idx}_current",
+                data_key=f"ac{idx}_current",
+                name=f"Phase {idx} Current",
+                native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+                device_class=SensorDeviceClass.CURRENT,
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:current-ac",
+                suggested_display_precision=2,
+            )
+        )
+    return descriptions
 
 
 async def async_setup_entry(
@@ -75,9 +162,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: DeltaSolarCoordinator = hass.data[DOMAIN][entry.entry_id]
+    descriptions: list[DeltaSolarSensorDescription] = list(SENSOR_DESCRIPTIONS)
+    descriptions.extend(_dc_descriptions(coordinator.dc_string_count))
+    descriptions.extend(_ac_descriptions(coordinator.ac_phase_count))
     async_add_entities(
         DeltaSolarSensor(coordinator, entry, desc)
-        for desc in SENSOR_DESCRIPTIONS
+        for desc in descriptions
     )
 
 
@@ -114,7 +204,12 @@ class DeltaSolarSensor(CoordinatorEntity[DeltaSolarCoordinator], SensorEntity):
         model = self._entry.data.get(CONF_INVERTER_MODEL, "Solar Inverter")
         sn = self._entry.data.get(CONF_INVERTER_SN, "")
         plant_id = self._entry.data.get(CONF_PLANT_ID, "")
-        return {
+        firmware = (
+            self.coordinator.data.get("firmware_version")
+            if self.coordinator.data
+            else None
+        )
+        info: dict[str, Any] = {
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": plant_name,
             "manufacturer": "Delta Electronics",
@@ -125,3 +220,6 @@ class DeltaSolarSensor(CoordinatorEntity[DeltaSolarCoordinator], SensorEntity):
                 f"?p=energy&pid={plant_id}&lang=en-us"
             ),
         }
+        if firmware:
+            info["sw_version"] = firmware
+        return info
