@@ -13,15 +13,17 @@ Monitor your **Delta Solar** inverter and plant energy data directly in Home Ass
   | Monthly Energy | kWh | Energy generated this calendar month |
   | Yearly Energy | kWh | Energy generated this calendar year |
   | Lifetime Energy | kWh | Total energy generated since commissioning |
-  | Current Power | W | Real-time output power |
+  | Current Power | W | Real-time AC output power (sum of phase powers) |
   | String N Voltage | V | DC input voltage per MPPT string |
   | String N Current | A | DC input current per MPPT string |
   | String N Power | W | DC input power per MPPT string |
-  | Phase N Voltage | V | AC output voltage per phase |
+  | Line N Voltage | V | AC line-to-line voltage (e.g. ~400 V on a 3-phase system) |
   | Phase N Current | A | AC output current per phase |
+  | Phase N Power | W | AC output power per phase |
 - The number of string/phase sensors is detected automatically from your inverter (e.g. RPI-M6A reports 2 strings and 3 phases)
 - Firmware version is shown on the device page (`sw_version`)
-- Data refreshes every **5 minutes**
+- Live electrical values (power, voltages, currents) come from the inverter's latest snapshot report, so they always share one timestamp — immune to plant timezone/clock misconfiguration
+- Data refreshes every **15 minutes**, matching the inverter's cloud reporting cadence
 - Works with the HA **Energy Dashboard** (Today's Energy sensor)
 
 ## Installation via HACS

@@ -47,7 +47,7 @@ SENSOR_DESCRIPTIONS: tuple[DeltaSolarSensorDescription, ...] = (
         name="Monthly Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:solar-power-variant",
         suggested_display_precision=2,
     ),
@@ -57,7 +57,7 @@ SENSOR_DESCRIPTIONS: tuple[DeltaSolarSensorDescription, ...] = (
         name="Yearly Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:sun-wireless",
         suggested_display_precision=2,
     ),
@@ -133,7 +133,7 @@ def _ac_descriptions(count: int) -> list[DeltaSolarSensorDescription]:
             DeltaSolarSensorDescription(
                 key=f"ac{idx}_voltage",
                 data_key=f"ac{idx}_voltage",
-                name=f"Phase {idx} Voltage",
+                name=f"Line {idx} Voltage",
                 native_unit_of_measurement=UnitOfElectricPotential.VOLT,
                 device_class=SensorDeviceClass.VOLTAGE,
                 state_class=SensorStateClass.MEASUREMENT,
@@ -151,6 +151,18 @@ def _ac_descriptions(count: int) -> list[DeltaSolarSensorDescription]:
                 state_class=SensorStateClass.MEASUREMENT,
                 icon="mdi:current-ac",
                 suggested_display_precision=2,
+            )
+        )
+        descriptions.append(
+            DeltaSolarSensorDescription(
+                key=f"ac{idx}_power",
+                data_key=f"ac{idx}_power",
+                name=f"Phase {idx} Power",
+                native_unit_of_measurement=UnitOfPower.WATT,
+                device_class=SensorDeviceClass.POWER,
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:lightning-bolt",
+                suggested_display_precision=0,
             )
         )
     return descriptions

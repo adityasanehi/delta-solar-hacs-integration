@@ -127,15 +127,11 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> dict[str, Any]:
         try:
             more_data = await api.get_inverter_update(item="more", **kwargs)
-            dcvi_data = await api.get_inverter_update(item="DCVI", **kwargs)
-            acvi_data = await api.get_inverter_update(item="ACVI", **kwargs)
         except (DeltaSolarConnectionError, DeltaSolarSessionExpired) as err:
             _LOGGER.warning("Delta live data fetch failed: %s", err)
             return {}
         return DeltaSolarAPI.parse_live_data(
             more_data,
-            dcvi_data,
-            acvi_data,
             kwargs["inverter_sn"],
             kwargs["inverter_num"],
         )
@@ -169,7 +165,6 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "today_energy": totals.get("today"),
             "month_energy": totals.get("month"),
             "year_energy": totals.get("year"),
-            "current_power": totals.get("current_power"),
             **live,
         }
 
