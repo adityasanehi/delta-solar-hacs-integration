@@ -61,9 +61,9 @@ def test_parse_live_data():
     assert live["ac_phase_count"] == 3
 
     # Current power = sum of phase powers (the value that reconciles with
-    # the energy totals). `male` is deliberately ignored (see parse_live_data).
+    # the energy totals); lifetime = male/1000.
     assert live["current_power"] == 4244.0
-    assert "lifetime_energy" not in live
+    assert live["lifetime_energy"] == 46762.61
     assert live["inverter_status"] == 2
     assert live["firmware_version"] == "1.38 / 1.46 / 1.15"
 
@@ -73,6 +73,7 @@ def test_parse_live_data_empty():
     assert live["dc_string_count"] == 0
     assert live["ac_phase_count"] == 0
     assert live["current_power"] is None
+    assert live["lifetime_energy"] is None
     assert live["last_ts"] is None
     assert live["firmware_version"] is None
 
@@ -99,11 +100,7 @@ def test_energy_parsers():
         {"energy": [25000, 26800]},
         {"energy": [296800, None]},
     )
-    assert totals == {"today": 9.51, "month": 51.8, "year": 296.8, "lifetime": None}
-
-    # unit=20years capture (2026-10-08): 2025 + 2026 in Wh -> 8255.49 kWh.
-    life = {"energy": [None, 2167660, 6087830, None]}
-    assert DeltaSolarAPI.parse_all_totals({}, {}, {}, life)["lifetime"] == 8255.49
+    assert totals == {"today": 9.51, "month": 51.8, "year": 296.8}
 
 
 def test_parse_live_data_night_snapshot():

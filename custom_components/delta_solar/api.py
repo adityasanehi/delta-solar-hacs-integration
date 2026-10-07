@@ -332,9 +332,15 @@ class DeltaSolarAPI:
             "inverter_status": info.get("ivs"),
         }
 
-        # `male` flips daily between two counters 39,506 kWh apart (inverter's
-        # own vs portal plant total), so lifetime comes from unit=20years.
+        # `male` is the inverter's own lifetime counter while it reports, but the
+        # portal swaps in its (incomplete) plant total when it doesn't, 39,506 kWh
+        # lower here. The coordinator only trusts it while the snapshot is fresh.
         out["last_ts"] = info.get("last_ts")
+        male = info.get("male")
+        try:
+            out["lifetime_energy"] = round(float(male) / 1000, 3) if male is not None else None
+        except (TypeError, ValueError):
+            out["lifetime_energy"] = None
 
         iv = info.get("iv") or []
         ic = info.get("ic") or []
@@ -383,15 +389,12 @@ class DeltaSolarAPI:
         day_data: dict[str, Any],
         month_data: dict[str, Any],
         year_data: dict[str, Any],
-        life_data: dict[str, Any] | None = None,
     ) -> dict[str, float | None]:
         """Return a dict with the energy totals."""
         return {
             "today": DeltaSolarAPI.parse_day_energy(day_data),
             "month": DeltaSolarAPI.parse_period_energy(month_data),
             "year": DeltaSolarAPI.parse_period_energy(year_data),
-            # unit=20years: one Wh value per year; the sum matches the portal.
-            "lifetime": DeltaSolarAPI.parse_period_energy(life_data or {}),
         }
 
     @staticmethod

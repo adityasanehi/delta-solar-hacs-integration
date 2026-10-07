@@ -60,7 +60,9 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._auth_valid = False
         self._consecutive_failures = 0
         self._last_ts: int | None = None
-        self._last_ts_seen = dt_util.utcnow()
+        # After a restart, assume stale until the report timestamp actually moves.
+        self._last_ts_seen = dt_util.utcnow() - STALE_AFTER - timedelta(seconds=1)
+        self._lifetime: float | None = None
         self.dc_string_count = 0
         self.ac_phase_count = 0
 
@@ -126,8 +128,7 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         day_data = await api.get_energy(unit="day", **kwargs)
         month_data = await api.get_energy(unit="month", **kwargs)
         year_data = await api.get_energy(unit="year", **kwargs)
-        life_data = await api.get_energy(unit="20years", **kwargs)
-        return DeltaSolarAPI.parse_all_totals(day_data, month_data, year_data, life_data)
+        return DeltaSolarAPI.parse_all_totals(day_data, month_data, year_data)
 
     async def _fetch_live(
         self, api: DeltaSolarAPI, kwargs: dict[str, Any]
@@ -149,12 +150,19 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ts = live.get("last_ts")
         now = dt_util.utcnow()
         if ts != self._last_ts:
-            self._last_ts, self._last_ts_seen = ts, now
+            if self._last_ts is not None:
+                self._last_ts_seen = now
+            self._last_ts = ts
         stale = ts is None or now - self._last_ts_seen > STALE_AFTER
+        # Hold the last online reading: the counter can't move while offline, and the
+        # portal's offline value is a different, lower counter.
         if stale:
+            live["lifetime_energy"] = self._lifetime
             live = DeltaSolarAPI.zero_stale(live)
             if live.get("current_power") is None and ts is not None:
                 live["current_power"] = 0.0
+        else:
+            self._lifetime = live.get("lifetime_energy")
         live["connection"] = "Disconnected" if stale else "Connected"
         if ts:
             # last_ts is plant-local wall time encoded as UTC; assumes plant tz == HA tz.
@@ -194,6 +202,7 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         live = await self._fetch_live(api, inverter_kwargs)
         live.update(await self._fetch_event(api))
+        live.setdefault("lifetime_energy", self._lifetime)
         self.dc_string_count = int(live.get("dc_string_count", 0) or 0)
         self.ac_phase_count = int(live.get("ac_phase_count", 0) or 0)
 
@@ -202,7 +211,6 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "today_energy": totals.get("today"),
             "month_energy": totals.get("month"),
             "year_energy": totals.get("year"),
-            "lifetime_energy": totals.get("lifetime"),
             **live,
         }
 

@@ -12,7 +12,7 @@ Monitor your **Delta Solar** inverter and plant energy data directly in Home Ass
   | Today's Energy | kWh | Energy generated today |
   | Monthly Energy | kWh | Energy generated this calendar month |
   | Yearly Energy | kWh | Energy generated this calendar year |
-  | Lifetime Energy | kWh | Total energy generated since commissioning (sum of the portal's 20-year view, matches the website) |
+  | Lifetime Energy | kWh | Total energy generated since commissioning (the inverter's own counter; held at its last online value while disconnected) |
   | Current Power | W | Real-time AC output power (sum of phase powers) |
   | String N Voltage | V | DC input voltage per MPPT string |
   | String N Current | A | DC input current per MPPT string |
