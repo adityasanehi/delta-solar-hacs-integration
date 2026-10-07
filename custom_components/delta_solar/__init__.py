@@ -46,6 +46,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await coordinator.async_config_entry_first_refresh()
 
+    # Per-string/phase sensors are sized from live data, which is empty at
+    # night: remember the last non-zero counts so a night restart keeps them.
+    for attr in ("dc_string_count", "ac_phase_count"):
+        live = getattr(coordinator, attr)
+        if live and entry.data.get(attr) != live:
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, attr: live}
+            )
+        elif not live:
+            setattr(coordinator, attr, entry.data.get(attr, 0))
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

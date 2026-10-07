@@ -375,7 +375,8 @@ class DeltaSolarAPI:
         elif ip:
             out["current_power"] = float(sum(v for v in ip if v is not None))
         else:
-            out["current_power"] = None
+            # Inverter answered but is idle (night): 0 W, not unknown.
+            out["current_power"] = 0.0 if info else None
 
         return out
 
