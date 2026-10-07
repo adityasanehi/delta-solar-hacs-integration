@@ -10,6 +10,7 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import (
     DeltaSolarAPI,
@@ -33,6 +34,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# No new inverter report for this long = disconnected (reports normally every 5-15 min).
+STALE_AFTER = timedelta(minutes=45)
+
 
 class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(
@@ -55,6 +59,8 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._api: DeltaSolarAPI | None = None
         self._auth_valid = False
         self._consecutive_failures = 0
+        self._last_ts: int | None = None
+        self._last_ts_seen = dt_util.utcnow()
         self.dc_string_count = 0
         self.ac_phase_count = 0
 
@@ -120,7 +126,8 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         day_data = await api.get_energy(unit="day", **kwargs)
         month_data = await api.get_energy(unit="month", **kwargs)
         year_data = await api.get_energy(unit="year", **kwargs)
-        return DeltaSolarAPI.parse_all_totals(day_data, month_data, year_data)
+        life_data = await api.get_energy(unit="20years", **kwargs)
+        return DeltaSolarAPI.parse_all_totals(day_data, month_data, year_data, life_data)
 
     async def _fetch_live(
         self, api: DeltaSolarAPI, kwargs: dict[str, Any]
@@ -130,11 +137,40 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (DeltaSolarConnectionError, DeltaSolarSessionExpired) as err:
             _LOGGER.warning("Delta live data fetch failed: %s", err)
             return {}
-        return DeltaSolarAPI.parse_live_data(
+        live = DeltaSolarAPI.parse_live_data(
             more_data,
             kwargs["inverter_sn"],
             kwargs["inverter_num"],
         )
+        return self._apply_staleness(live)
+
+    def _apply_staleness(self, live: dict[str, Any]) -> dict[str, Any]:
+        """Flag the inverter disconnected when its report timestamp stops moving."""
+        ts = live.get("last_ts")
+        now = dt_util.utcnow()
+        if ts != self._last_ts:
+            self._last_ts, self._last_ts_seen = ts, now
+        stale = ts is None or now - self._last_ts_seen > STALE_AFTER
+        if stale:
+            live = DeltaSolarAPI.zero_stale(live)
+            if live.get("current_power") is None and ts is not None:
+                live["current_power"] = 0.0
+        live["connection"] = "Disconnected" if stale else "Connected"
+        if ts:
+            # last_ts is plant-local wall time encoded as UTC; assumes plant tz == HA tz.
+            naive = datetime.fromtimestamp(ts, timezone.utc).replace(tzinfo=None)
+            live["last_report"] = naive.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+        return live
+
+    async def _fetch_event(self, api: DeltaSolarAPI) -> dict[str, Any]:
+        try:
+            body = await api.get_events(
+                self._plant_config[CONF_PLANT_ID], self._plant_config[CONF_INVERTER_SN]
+            )
+        except DeltaSolarConnectionError as err:
+            _LOGGER.debug("Delta event fetch failed: %s", err)
+            return {}
+        return DeltaSolarAPI.parse_last_event(body)
 
     async def _async_update_data(self) -> dict[str, Any]:
         api = self._ensure_api()
@@ -157,6 +193,7 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._handle_failure(err)
 
         live = await self._fetch_live(api, inverter_kwargs)
+        live.update(await self._fetch_event(api))
         self.dc_string_count = int(live.get("dc_string_count", 0) or 0)
         self.ac_phase_count = int(live.get("ac_phase_count", 0) or 0)
 
@@ -165,6 +202,7 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "today_energy": totals.get("today"),
             "month_energy": totals.get("month"),
             "year_energy": totals.get("year"),
+            "lifetime_energy": totals.get("lifetime"),
             **live,
         }
 

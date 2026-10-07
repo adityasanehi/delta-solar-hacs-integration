@@ -61,9 +61,9 @@ def test_parse_live_data():
     assert live["ac_phase_count"] == 3
 
     # Current power = sum of phase powers (the value that reconciles with
-    # the energy totals); lifetime = male/1000.
+    # the energy totals). `male` is deliberately ignored (see parse_live_data).
     assert live["current_power"] == 4244.0
-    assert live["lifetime_energy"] == 46762.61
+    assert "lifetime_energy" not in live
     assert live["inverter_status"] == 2
     assert live["firmware_version"] == "1.38 / 1.46 / 1.15"
 
@@ -73,7 +73,7 @@ def test_parse_live_data_empty():
     assert live["dc_string_count"] == 0
     assert live["ac_phase_count"] == 0
     assert live["current_power"] is None
-    assert live["lifetime_energy"] is None
+    assert live["last_ts"] is None
     assert live["firmware_version"] is None
 
 
@@ -99,7 +99,39 @@ def test_energy_parsers():
         {"energy": [25000, 26800]},
         {"energy": [296800, None]},
     )
-    assert totals == {"today": 9.51, "month": 51.8, "year": 296.8}
+    assert totals == {"today": 9.51, "month": 51.8, "year": 296.8, "lifetime": None}
+
+    # unit=20years capture (2026-10-08): 2025 + 2026 in Wh -> 8255.49 kWh.
+    life = {"energy": [None, 2167660, 6087830, None]}
+    assert DeltaSolarAPI.parse_all_totals({}, {}, {}, life)["lifetime"] == 8255.49
+
+
+def test_parse_live_data_night_snapshot():
+    """Night capture (2026-10-08): keys present, no iv/ov/ip/op -> 0 W."""
+    more = {"result": {"SN1": {"1": {"ivs": 2, "last_ts": 1791377183, "male": 8255490}}}}
+    live = DeltaSolarAPI.parse_live_data(more, "SN1", 1)
+    assert live["current_power"] == 0.0
+    assert live["last_ts"] == 1791377183
+
+
+def test_zero_stale():
+    live = DeltaSolarAPI.parse_live_data(MORE, "O1R19900620W3", 1)
+    stale = DeltaSolarAPI.zero_stale(live)
+    assert stale["current_power"] == 0.0
+    assert stale["dc1_power"] == 0.0 and stale["ac2_current"] == 0.0
+    assert stale["dc1_voltage"] is None and stale["ac1_voltage"] is None
+    assert stale["dc_string_count"] == 2  # counts untouched
+    assert live["current_power"] == 4244.0  # input not mutated
+
+
+def test_parse_last_event():
+    body = {"eventList": [
+        {"event_ts": "2026-10-05 15:31:14", "device_name": "1", "error_msg": "AC Volt Low (E10)"},
+        {"event_ts": "2026-09-29 06:35:55", "device_name": "1", "error_msg": "Insulation Fault (E34)"},
+    ]}
+    assert DeltaSolarAPI.parse_last_event(body) == {
+        "last_event": "AC Volt Low (E10)", "last_event_time": "2026-10-05 15:31:14"}
+    assert DeltaSolarAPI.parse_last_event({}) == {"last_event": None, "last_event_time": None}
 
 
 if __name__ == "__main__":

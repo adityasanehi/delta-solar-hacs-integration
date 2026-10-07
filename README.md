@@ -12,7 +12,7 @@ Monitor your **Delta Solar** inverter and plant energy data directly in Home Ass
   | Today's Energy | kWh | Energy generated today |
   | Monthly Energy | kWh | Energy generated this calendar month |
   | Yearly Energy | kWh | Energy generated this calendar year |
-  | Lifetime Energy | kWh | Total energy generated since commissioning |
+  | Lifetime Energy | kWh | Total energy generated since commissioning (sum of the portal's 20-year view, matches the website) |
   | Current Power | W | Real-time AC output power (sum of phase powers) |
   | String N Voltage | V | DC input voltage per MPPT string |
   | String N Current | A | DC input current per MPPT string |
@@ -20,6 +20,10 @@ Monitor your **Delta Solar** inverter and plant energy data directly in Home Ass
   | Line N Voltage | V | AC line-to-line voltage (e.g. ~400 V on a 3-phase system) |
   | Phase N Current | A | AC output current per phase |
   | Phase N Power | W | AC output power per phase |
+  | Connection | Connected / Disconnected | Disconnected when the inverter has not reported for 45 minutes (always at night) |
+  | Last Report | timestamp | When the inverter last reported to the portal |
+  | Last Event | text | Most recent fault from the portal event log, with `event_time` attribute |
+- While disconnected, power and current read 0 and voltages are unknown, instead of repeating the last report
 - The number of string/phase sensors is detected automatically from your inverter (e.g. RPI-M6A reports 2 strings and 3 phases)
 - Firmware version is shown on the device page (`sw_version`)
 - Live electrical values (power, voltages, currents) come from the inverter's latest snapshot report, so they always share one timestamp — immune to plant timezone/clock misconfiguration

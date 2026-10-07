@@ -19,5 +19,6 @@ APP_PAGE_URL = f"{BASE_URL}/app_page.php"
 INIT_PLANT_URL = f"{BASE_URL}/web/process_init_plant.php"
 AJAX_URL = f"{BASE_URL}/web/AjaxPlantUpdatePlant.php"
 INVERTER_URL = f"{BASE_URL}/web/AjaxInverterUpdate.php"
+EVENTS_URL = f"{BASE_URL}/web/process_plant_events.php"
 
 DEFAULT_SCAN_INTERVAL = 900  # 15 min — matches the inverter's cloud reporting cadence

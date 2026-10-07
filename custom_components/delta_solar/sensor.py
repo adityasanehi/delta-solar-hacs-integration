@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -80,6 +81,26 @@ SENSOR_DESCRIPTIONS: tuple[DeltaSolarSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:counter",
         suggested_display_precision=2,
+    ),
+    DeltaSolarSensorDescription(
+        key="connection",
+        data_key="connection",
+        name="Connection",
+        device_class=SensorDeviceClass.ENUM,
+        options=["Connected", "Disconnected"],
+        icon="mdi:cloud-check",
+    ),
+    DeltaSolarSensorDescription(
+        key="last_report",
+        data_key="last_report",
+        name="Last Report",
+        device_class=SensorDeviceClass.TIMESTAMP,
+    ),
+    DeltaSolarSensorDescription(
+        key="last_event",
+        data_key="last_event",
+        name="Last Event",
+        icon="mdi:alert-circle-outline",
     ),
 )
 
@@ -199,16 +220,24 @@ class DeltaSolarSensor(CoordinatorEntity[DeltaSolarCoordinator], SensorEntity):
         self._entry = entry
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> float | str | datetime | None:
         if self.coordinator.data is None:
             return None
         value = self.coordinator.data.get(self.entity_description.data_key)
         if value is None:
             return None
+        if isinstance(value, (str, datetime)):
+            return value
         try:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self.entity_description.key != "last_event" or self.coordinator.data is None:
+            return None
+        return {"event_time": self.coordinator.data.get("last_event_time")}
 
     @property
     def device_info(self) -> dict[str, Any]:

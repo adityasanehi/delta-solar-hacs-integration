@@ -8,7 +8,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import LOGIN_URL, APP_PAGE_URL, INIT_PLANT_URL, AJAX_URL, INVERTER_URL
+from .const import LOGIN_URL, APP_PAGE_URL, INIT_PLANT_URL, AJAX_URL, INVERTER_URL, EVENTS_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -332,11 +332,9 @@ class DeltaSolarAPI:
             "inverter_status": info.get("ivs"),
         }
 
-        male = info.get("male")
-        try:
-            out["lifetime_energy"] = round(float(male) / 1000, 3) if male is not None else None
-        except (TypeError, ValueError):
-            out["lifetime_energy"] = None
+        # `male` flips daily between two counters 39,506 kWh apart (inverter's
+        # own vs portal plant total), so lifetime comes from unit=20years.
+        out["last_ts"] = info.get("last_ts")
 
         iv = info.get("iv") or []
         ic = info.get("ic") or []
@@ -375,8 +373,8 @@ class DeltaSolarAPI:
         elif ip:
             out["current_power"] = float(sum(v for v in ip if v is not None))
         else:
-            # Inverter answered but is idle (night): 0 W, not unknown.
-            out["current_power"] = 0.0 if info else None
+            # Idle snapshot (night): no electrical readings at all = 0 W, not unknown.
+            out["current_power"] = 0.0 if info and not (iv or ov) else None
 
         return out
 
@@ -385,13 +383,31 @@ class DeltaSolarAPI:
         day_data: dict[str, Any],
         month_data: dict[str, Any],
         year_data: dict[str, Any],
+        life_data: dict[str, Any] | None = None,
     ) -> dict[str, float | None]:
         """Return a dict with the energy totals."""
         return {
             "today": DeltaSolarAPI.parse_day_energy(day_data),
             "month": DeltaSolarAPI.parse_period_energy(month_data),
             "year": DeltaSolarAPI.parse_period_energy(year_data),
+            # unit=20years: one Wh value per year; the sum matches the portal.
+            "lifetime": DeltaSolarAPI.parse_period_energy(life_data or {}),
         }
+
+    @staticmethod
+    def zero_stale(live: dict[str, Any]) -> dict[str, Any]:
+        """Blank a snapshot the inverter stopped refreshing.
+
+        The portal keeps serving the last report (e.g. 1936 W for 11 h), so
+        power/current go to 0 and voltages to unknown.
+        """
+        out = dict(live)
+        for key in list(out):
+            if key.endswith(("_power", "_current")):
+                out[key] = 0.0
+            elif key.endswith("_voltage"):
+                out[key] = None
+        return out
 
     async def get_inverter_update(
         self,
@@ -439,6 +455,30 @@ class DeltaSolarAPI:
         if not isinstance(body, dict):
             return {}
         return body
+
+    async def get_events(self, plant_id: str, inverter_sn: str) -> dict[str, Any]:
+        """Fault history (newest first). Uses action=get only; remove clears alerts."""
+        referer = (
+            f"{APP_PAGE_URL}?email={self._email}&password={self._password}"
+            f"&p=energy&pid={plant_id}&lang=en-us"
+        )
+        payload = {
+            "sn_array": inverter_sn,
+            "is_inv": 1,
+            "plant_id": plant_id,
+            "action": "get",
+        }
+        status, body = await self._request(
+            "POST", EVENTS_URL, data=payload, headers={**HEADERS_AJAX, "Referer": referer},
+        )
+        return body if status == 200 and isinstance(body, dict) else {}
+
+    @staticmethod
+    def parse_last_event(body: dict[str, Any]) -> dict[str, Any]:
+        rows = body.get("eventList") if body else None
+        if not rows:
+            return {"last_event": None, "last_event_time": None}
+        return {"last_event": rows[0].get("error_msg"), "last_event_time": rows[0].get("event_ts")}
 
     @staticmethod
     def _extract_inverter(
