@@ -16,6 +16,7 @@ from homeassistant.const import (
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
+    EntityCategory,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
@@ -85,6 +86,7 @@ SENSOR_DESCRIPTIONS: tuple[DeltaSolarSensorDescription, ...] = (
     DeltaSolarSensorDescription(
         key="connection",
         data_key="connection",
+        entity_category=EntityCategory.DIAGNOSTIC,
         name="Connection",
         device_class=SensorDeviceClass.ENUM,
         options=["Connected", "Disconnected"],
@@ -93,12 +95,14 @@ SENSOR_DESCRIPTIONS: tuple[DeltaSolarSensorDescription, ...] = (
     DeltaSolarSensorDescription(
         key="last_report",
         data_key="last_report",
+        entity_category=EntityCategory.DIAGNOSTIC,
         name="Last Report",
         device_class=SensorDeviceClass.TIMESTAMP,
     ),
     DeltaSolarSensorDescription(
         key="last_event",
         data_key="last_event",
+        entity_category=EntityCategory.DIAGNOSTIC,
         name="Last Event",
         icon="mdi:alert-circle-outline",
     ),
