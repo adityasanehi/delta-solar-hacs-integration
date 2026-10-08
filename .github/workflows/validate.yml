@@ -8,6 +8,9 @@ on:
     # Weekly, so an upstream API or token change surfaces before users hit it.
     - cron: "0 6 * * 1"
 
+permissions:
+  contents: read
+
 jobs:
   hassfest:
     name: Hassfest
