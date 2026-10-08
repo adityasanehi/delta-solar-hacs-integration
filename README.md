@@ -5,6 +5,8 @@
 [![Downloads](https://img.shields.io/github/downloads/adityasanehi/delta-solar-hacs-integration/total)](https://github.com/adityasanehi/delta-solar-hacs-integration/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-integration-18BCF2.svg)](https://www.home-assistant.io)
 [![IoT class](https://img.shields.io/badge/IoT%20class-cloud%20polling-blue.svg)](https://developers.home-assistant.io/docs/creating_integration_manifest/#iot-class)
+[![Validate](https://github.com/adityasanehi/delta-solar-hacs-integration/actions/workflows/validate.yml/badge.svg)](https://github.com/adityasanehi/delta-solar-hacs-integration/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/github/license/adityasanehi/delta-solar-hacs-integration)](LICENSE)
 [![Issues](https://img.shields.io/github/issues/adityasanehi/delta-solar-hacs-integration)](https://github.com/adityasanehi/delta-solar-hacs-integration/issues)
 
 Monitor your **Delta Solar** (Delta Electronics, mydeltasolar.deltaww.com) solar inverter and plant energy production directly in Home Assistant. Works with the Home Assistant Energy dashboard.
