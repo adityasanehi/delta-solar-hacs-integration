@@ -32,6 +32,8 @@ Monitor your **Delta Solar** inverter and plant energy data directly in Home Ass
 
 ## Installation via HACS
 
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=adityasanehi&repository=delta-solar-hacs-integration&category=integration)
+
 1. Open HACS → **Integrations** → ⋮ → **Custom repositories**
 2. Add `https://github.com/adityasanehi/delta-solar-hacs-integration` as an **Integration**
 3. Search for **Delta Solar** and install
