@@ -22,3 +22,12 @@ INVERTER_URL = f"{BASE_URL}/web/AjaxInverterUpdate.php"
 EVENTS_URL = f"{BASE_URL}/web/process_plant_events.php"
 
 DEFAULT_SCAN_INTERVAL = 900  # 15 min — matches the inverter's cloud reporting cadence
+
+# Local mode: poll the inverter's own Wi-Fi AP (via the user's bridge) over Modbus.
+CONF_MODE = "mode"
+MODE_LOCAL = "local"
+DEFAULT_LOCAL_HOST = "192.168.50.1"
+DEFAULT_LOCAL_PORT = 5001
+LOCAL_SCAN_INTERVAL = 30
+# The inverter AP/bridge drops for ~180 s every so often; ride it out on cached values.
+LOCAL_MAX_FAILURES = 12  # x 30 s = 6 min before entities go unavailable

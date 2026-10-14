@@ -8,7 +8,7 @@ import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
+from homeassistant.const import CONF_EMAIL, CONF_HOST, CONF_PASSWORD, CONF_PORT
 from homeassistant.data_entry_flow import FlowResult
 
 from .api import DeltaSolarAPI, DeltaSolarAuthError, DeltaSolarConnectionError
@@ -26,7 +26,12 @@ from .const import (
     CONF_IS_INV,
     CONF_PLANT_NAME,
     CONF_INVERTER_MODEL,
+    CONF_MODE,
+    MODE_LOCAL,
+    DEFAULT_LOCAL_HOST,
+    DEFAULT_LOCAL_PORT,
 )
+from .local import LocalClient, LocalError, read_identity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,6 +45,46 @@ class DeltaSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._plants: list[dict[str, Any]] = []
 
     async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return self.async_show_menu(step_id="user", menu_options=["cloud", "local"])
+
+    async def async_step_local(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                ident = await read_identity(
+                    LocalClient(user_input[CONF_HOST], user_input[CONF_PORT])
+                )
+            except LocalError:
+                errors["base"] = "cannot_connect"
+            else:
+                await self.async_set_unique_id(f"delta_solar_local_{ident['mac']}")
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=f"Delta {ident['model']} (local)",
+                    data={
+                        CONF_MODE: MODE_LOCAL,
+                        CONF_HOST: user_input[CONF_HOST],
+                        CONF_PORT: user_input[CONF_PORT],
+                        CONF_INVERTER_MODEL: ident["model"],
+                        "mac": ident["mac"],
+                    },
+                )
+        return self.async_show_form(
+            step_id="local",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST, default=DEFAULT_LOCAL_HOST): str,
+                    vol.Required(CONF_PORT, default=DEFAULT_LOCAL_PORT): int,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_cloud(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         errors: dict[str, str] = {}
@@ -64,7 +109,7 @@ class DeltaSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_plant()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="cloud",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_EMAIL): str,

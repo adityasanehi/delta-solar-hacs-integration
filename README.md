@@ -64,6 +64,12 @@ During the setup wizard you only need:
 
 Everything else (Plant ID, inverter serial number, timezone, etc.) is discovered automatically from the API.
 
+## Local mode (no cloud)
+
+Choose **Local inverter** when adding the integration. It talks Modbus (RTU framing over TCP) straight to the inverter's own Wi-Fi access point, default `192.168.50.1:5001` — or to whatever host/port your bridge (e.g. OpenWrt) forwards to it. Polls every 30 s and exposes power, energy (today/lifetime), per-string DC and per-phase AC values. Month/year energy and events are cloud-only.
+
+The inverter AP drops roughly every 3 minutes and reconnects; the integration keeps the last values through gaps and only marks sensors unavailable after ~6 minutes without contact.
+
 ## Supported Devices
 
 Any Delta solar installation accessible via [mydeltasolar.deltaww.com](https://mydeltasolar.deltaww.com) including:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
+from homeassistant.const import CONF_EMAIL, CONF_HOST, CONF_PASSWORD, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -17,13 +17,24 @@ from .const import (
     CONF_PLT_TYPE,
     CONF_IS_DST,
     CONF_IS_INV,
+    CONF_MODE,
+    MODE_LOCAL,
 )
-from .coordinator import DeltaSolarCoordinator
+from .coordinator import DeltaSolarCoordinator, DeltaSolarLocalCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if entry.data.get(CONF_MODE) == MODE_LOCAL:
+        coordinator = DeltaSolarLocalCoordinator(
+            hass, entry.data[CONF_HOST], entry.data[CONF_PORT]
+        )
+        await coordinator.async_config_entry_first_refresh()
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        return True
+
     plant_config = {
         CONF_PLANT_ID: entry.data[CONF_PLANT_ID],
         CONF_INVERTER_SN: entry.data[CONF_INVERTER_SN],

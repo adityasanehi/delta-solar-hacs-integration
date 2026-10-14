@@ -23,7 +23,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, CONF_PLANT_ID, CONF_PLANT_NAME, CONF_INVERTER_MODEL, CONF_INVERTER_SN
+from .const import (
+    DOMAIN, CONF_PLANT_ID, CONF_PLANT_NAME, CONF_INVERTER_MODEL, CONF_INVERTER_SN,
+    CONF_MODE, MODE_LOCAL,
+)
 from .coordinator import DeltaSolarCoordinator
 
 
@@ -200,6 +203,12 @@ async def async_setup_entry(
 ) -> None:
     coordinator: DeltaSolarCoordinator = hass.data[DOMAIN][entry.entry_id]
     descriptions: list[DeltaSolarSensorDescription] = list(SENSOR_DESCRIPTIONS)
+    if entry.data.get(CONF_MODE) == MODE_LOCAL:
+        # The inverter itself has no month/year counters or event feed.
+        descriptions = [
+            d for d in descriptions
+            if d.key not in ("month_energy", "year_energy", "last_event")
+        ]
     descriptions.extend(_dc_descriptions(coordinator.dc_string_count))
     descriptions.extend(_ac_descriptions(coordinator.ac_phase_count))
     async_add_entities(
@@ -245,6 +254,14 @@ class DeltaSolarSensor(CoordinatorEntity[DeltaSolarCoordinator], SensorEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
+        if self._entry.data.get(CONF_MODE) == MODE_LOCAL:
+            return {
+                "identifiers": {(DOMAIN, self._entry.entry_id)},
+                "name": self._entry.title,
+                "manufacturer": "Delta Electronics",
+                "model": self._entry.data.get(CONF_INVERTER_MODEL),
+                "connections": {("mac", self._entry.data["mac"].lower())},
+            }
         plant_name = self._entry.data.get(CONF_PLANT_NAME, "Delta Solar")
         model = self._entry.data.get(CONF_INVERTER_MODEL, "Solar Inverter")
         sn = self._entry.data.get(CONF_INVERTER_SN, "")

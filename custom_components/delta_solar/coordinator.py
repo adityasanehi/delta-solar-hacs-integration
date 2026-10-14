@@ -12,6 +12,7 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .local import LocalClient, LocalError, read_layout, read_live
 from .api import (
     DeltaSolarAPI,
     DeltaSolarConnectionError,
@@ -20,6 +21,8 @@ from .api import (
 from .const import (
     DOMAIN,
     DEFAULT_SCAN_INTERVAL,
+    LOCAL_SCAN_INTERVAL,
+    LOCAL_MAX_FAILURES,
     CONF_PLANT_ID,
     CONF_INVERTER_SN,
     CONF_INVERTER_NUM,
@@ -224,3 +227,38 @@ class DeltaSolarCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return self.data
         raise UpdateFailed(f"Cannot connect to Delta Solar: {err}") from err
+
+
+class DeltaSolarLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Polls the inverter directly; same data keys as the cloud coordinator."""
+
+    def __init__(self, hass: HomeAssistant, host: str, port: int) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_local",
+            update_interval=timedelta(seconds=LOCAL_SCAN_INTERVAL),
+        )
+        self._client = LocalClient(host, port)
+        self._layout: dict[str, Any] | None = None
+        self._failures = 0
+        self.dc_string_count = 0
+        self.ac_phase_count = 0
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        try:
+            if self._layout is None:
+                self._layout = await read_layout(self._client)
+                self.dc_string_count = self._layout["dc_string_count"]
+                self.ac_phase_count = self._layout["ac_phase_count"]
+            live = await read_live(self._client, self._layout)
+        except LocalError as err:
+            self._failures += 1
+            if self.data is not None and self._failures < LOCAL_MAX_FAILURES:
+                _LOGGER.debug("Delta local poll failed (%d): %s", self._failures, err)
+                return {**self.data, "connection": "Disconnected"}
+            raise UpdateFailed(f"Cannot reach inverter: {err}") from err
+        self._failures = 0
+        live["connection"] = "Connected"
+        live["last_report"] = dt_util.now()
+        return live

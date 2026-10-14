@@ -2,11 +2,27 @@
   "config": {
     "step": {
       "user": {
+        "title": "Delta Solar",
+        "description": "How should Home Assistant get data from your inverter?",
+        "menu_options": {
+          "cloud": "Delta Solar cloud (portal login)",
+          "local": "Local inverter (Wi-Fi / bridge, no cloud)"
+        }
+      },
+      "cloud": {
         "title": "Delta Solar Login",
         "description": "Enter your Delta Solar portal credentials. Your plants will be discovered automatically.",
         "data": {
           "email": "Email address",
           "password": "Password"
+        }
+      },
+      "local": {
+        "title": "Local inverter",
+        "description": "Address of the inverter's Modbus port: 192.168.50.1:5001 when on its Wi-Fi, or your bridge's forwarded host and port.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
         }
       },
       "plant": {
@@ -18,7 +34,7 @@
       }
     },
     "error": {
-      "cannot_connect": "Could not connect to the Delta Solar portal. Check your internet connection.",
+      "cannot_connect": "Could not connect. Check the host/port and that you can reach the inverter (portal login or network).",
       "invalid_auth": "Invalid email or password, or no plants found on this account.",
       "unknown": "An unexpected error occurred. Check the Home Assistant logs."
     },
